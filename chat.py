@@ -1,6 +1,7 @@
 __metaclass__ = type
 
 import time
+import string
 from asyncore import dispatcher
 from asynchat import async_chat
 import socket
@@ -73,6 +74,10 @@ class ChatLogic:
         pass
 
 
+class UnknownActionError(Exception):
+    pass
+
+
 class ChatRoomLogic(ChatLogic):
     '''Implement a ChatLogic to handle chat room behaviors.'''
 
@@ -90,14 +95,16 @@ class ChatRoomLogic(ChatLogic):
             session.push(words + '\n')
 
     def handle_client_data(self, chatsession, data):
-        if data == '/quit':
-            chatsession.push('Bye!\n')
-            chatsession.handle_close()
+        if data == '':
             return
-        if data == '/who':
-            for session in self.__sessions:
-                chatsession.push(session.username+'\n')
+        if data[0] == '/':
+            args = string.split(data[1:], ' ', 5)
+            try:
+                self.__dispatch_client_action(chatsession, args[0], args[1:])
+            except UnknownActionError:
+                chatsession.push('Unknown action: %s\n' % args[0])
             return
+
         self.__broadcast('%s: "%s" says:\n%s\n' %
                        (now_str(), chatsession.username, data))
 
@@ -111,6 +118,22 @@ class ChatRoomLogic(ChatLogic):
         super(ChatRoomLogic, self).handle_client_leave(chatsession)
         self.__sessions.remove(chatsession)
         self.__broadcast_user_state(chatsession, "leaves room")
+
+    def __dispatch_client_action(self, chatsession, action, args):
+        method = getattr(self, '_do_' + action, None)
+        if method is None:
+            raise UnknownActionError()
+        method(chatsession, args)
+
+    def _do_quit(self, chatsession, args):
+        chatsession.push('Bye!\n')
+        chatsession.handle_close()
+        return
+
+    def _do_who(self, chatsession, args):
+        for session in self.__sessions:
+            chatsession.push(session.username + '\n')
+        return
 
 
 class UserNameLogic(ChatLogic):
