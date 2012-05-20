@@ -16,6 +16,18 @@ def now_str():
     return time.ctime(time.time())
 
 
+class ChatLogicError(Exception):
+    pass
+
+
+class UnknownActionError(ChatLogicError):
+    pass
+
+
+class DeleteNonEmptyRoomError(ChatLogicError):
+    pass
+
+
 class _ChatSession(async_chat):
     '''Collect user data and call ChatLogics to deal with the data.'''
 
@@ -74,10 +86,6 @@ class ChatLogic:
         pass
 
 
-class UnknownActionError(Exception):
-    pass
-
-
 class ChatRoomLogic(ChatLogic):
     '''Implement a ChatLogic to handle chat room behaviors.'''
 
@@ -102,7 +110,7 @@ class ChatRoomLogic(ChatLogic):
             try:
                 self.__dispatch_client_action(chatsession, args[0], args[1:])
             except UnknownActionError:
-                chatsession.push('Unknown action: %s\n' % args[0])
+                chatsession.push('Error: unknown action: %s\n' % args[0])
             return
 
         self.__broadcast('%s: "%s" says:\n%s\n' %
@@ -119,6 +127,12 @@ class ChatRoomLogic(ChatLogic):
         self.__sessions.remove(chatsession)
         self.__broadcast_user_state(chatsession, "leaves room")
 
+    def is_empty(self):
+        if self.__sessions:
+            return False
+        else:
+            return True
+
     def __dispatch_client_action(self, chatsession, action, args):
         method = getattr(self, '_do_' + action, None)
         if method is None:
@@ -133,6 +147,60 @@ class ChatRoomLogic(ChatLogic):
     def _do_who(self, chatsession, args):
         for session in self.__sessions:
             chatsession.push(session.username + '\n')
+        return
+
+    def _do_addroom(self, chatsession, args):
+        roomname = args[0]
+        self._server.add_room(roomname)
+        chatsession.push('Info: add new room "%s"\n' % roomname)
+        return
+
+    def _do_gotoroom(self, chatsession, args):
+        roomname = args[0]
+        try:
+            newroom = self._server.get_room(roomname)
+        except:
+            chatsession.push('Error: no such room.\n')
+            return
+        chatsession.change_logic(newroom)
+
+    def _do_delroom(self, chatsession, args):
+        roomname = args[0]
+        try:
+            self._server.del_room(roomname)
+        except KeyError:
+            chatsession.push('Error: no such room "%s"\n' % roomname)
+            return
+        except DeleteNonEmptyRoomError:
+            chatsession.push(
+                    'Error: room "%s" is not empty, can not delete it\n' %
+                    roomname)
+            return
+        chatsession.push('Info: delete room "%s"\n' % roomname)
+        return
+
+    def _do_roomlist(self, chatsession, args):
+        chatsession.push('Info: room list\n')
+        for roomname in self._server.room_names():
+            chatsession.push('\t %s\n' % roomname)
+        chatsession.push('room list over\n')
+        return
+
+    def _do_hall(self, chatsession, args):
+        hall = self._server.get_hall()
+        chatsession.change_logic(hall)
+        return
+
+    def _do_help(self, chatsession, args):
+        chatsession.push('Info: action list\n'
+                         '/addroom room_name\n\tAdd a new room\n'
+                         '/delroom room_name\n\tDelete the room\n'
+                         '/gotoroom room_name\n\tGoto another room\n'
+                         '/hall\n\tGoto EdChat Hall\n'
+                         '/help\n\tShow this help\n'
+                         '/quit\n\tQuit EdChat\n'
+                         '/roomlist\n\tShow all rooms\n'
+                         '/who\n\tShow all room members\n')
         return
 
 
@@ -163,7 +231,8 @@ class UserNameLogic(ChatLogic):
             chatsession.push('Please input your user name >')
             return
         if not self.__add_clientname(data):
-            chatsession.push('Name exists. Please input your user name>')
+            chatsession.push('Error: name exists.\n'
+                             'Please input your user name>')
             return
         chatsession.username = data
         chatsession.change_logic(self.__nextroom)
@@ -190,7 +259,31 @@ class ChatServer(dispatcher):
     def __chatlogic_init(self):
         mainroom = ChatRoomLogic(self, self.__name + ' Hall')
         name_mgr = UserNameLogic(self, self.__name, mainroom)
-        self.__logics = {'mainroom': mainroom, 'name_mgr': name_mgr}
+        rooms = {}
+        self.__logics = {'mainroom': mainroom,
+                         'name_mgr': name_mgr,
+                         'rooms': rooms}
+
+    def add_room(self, roomname):
+        rooms = self.__logics['rooms']
+        if roomname not in rooms:
+            rooms[roomname] = ChatRoomLogic(self, roomname)
+
+    def del_room(self, roomname):
+        rooms = self.__logics['rooms']
+        if not rooms[roomname].is_empty():
+            raise DeleteNonEmptyRoomError()
+        del rooms[roomname]
+        return
+
+    def get_room(self, roomname):
+        return self.__logics['rooms'][roomname]
+
+    def get_hall(self):
+        return self.__logics['mainroom']
+
+    def room_names(self):
+        return self.__logics['rooms'].keys()
 
     def handle_accept(self):
         conn, addr = self.accept()
