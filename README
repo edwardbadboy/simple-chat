@@ -1,0 +1,8 @@
+A simple chat server using python asyncore.
+
+Start Server:
+    Run: python chat.py
+
+Connect to Server:
+    Server defaul port is 5004.
+    Run: telnet server_ip server_port
