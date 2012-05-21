@@ -28,7 +28,7 @@ class DeleteNonEmptyRoomError(ChatLogicError):
     pass
 
 
-class _ChatSession(async_chat):
+class ChatSession(async_chat):
     '''Collect user data and call ChatLogics to deal with the data.'''
 
     def __init__(self, chatserver, sock):
@@ -291,7 +291,7 @@ class ChatServer(dispatcher):
         # when change_logic to a name manager or other logic
         # the chatsession will be or will not be referenced by that logic
         # so the server must own the session to keep a reference
-        chatsession = _ChatSession(self, conn)
+        chatsession = ChatSession(self, conn)
         self.__allsessions.append(chatsession)
         chatsession.change_logic(self.__logics['name_mgr'])
 
