@@ -1,0 +1,5 @@
+for remote debug, add these lines to __main__
+    import rpdb2
+    rpdb2.start_embedded_debugger('123456')
+
+then start the script, it will wait until a pdb attach to it with password.
