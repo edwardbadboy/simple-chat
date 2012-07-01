@@ -1,7 +1,6 @@
 __metaclass__ = type
 
 import time
-import string
 from asyncore import dispatcher
 from asynchat import async_chat
 import socket
@@ -106,7 +105,7 @@ class ChatRoomLogic(ChatLogic):
         if data == '':
             return
         if data[0] == '/':
-            args = string.split(data[1:], ' ', 5)
+            args = data[1:].split(' ', 5)
             try:
                 self.__dispatch_client_action(chatsession, args[0], args[1:])
             except UnknownActionError:
